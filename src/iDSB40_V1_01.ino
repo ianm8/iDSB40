@@ -20,7 +20,7 @@
 
 //#define YOUR_CALL "VK7IAN"
 
-#define VERSION_STRING         " V1.0."
+#define VERSION_STRING         " V1.1."
 #define DEFAULT_FREQUENCY      7100000ul
 #define FREQUENCY_MIN          7000000UL
 #define FREQUENCY_MAX          7300000UL
@@ -593,9 +593,12 @@ void loop1(void)
     delay(50);
 
     // set TX frequency down by 2700 since
-    // inverted audio is not at frequency + 1700
-    const uint64_t txf = (radio.frequency-2700) * SI5351_FREQ_MULT;
-    si5351.set_freq(txf,SI5351_CLK0);
+    // inverted audio is now at frequency + 1700
+    if (radio.mode==MODE_iDSB)
+    {
+      const uint64_t txf = (radio.frequency-2700) * SI5351_FREQ_MULT;
+      si5351.set_freq(txf,SI5351_CLK0);
+    }
 
     // prevent TX/RX feedback
     // *Note, there is an issue with the RP2040 ADC switching circuitry
@@ -661,8 +664,11 @@ void loop1(void)
     adc_gpio_init(PIN_AGCIN);
     radio.tx_enable = false;
     delay(20);
-    si5351.set_freq(radio.frequency * SI5351_FREQ_MULT,SI5351_CLK0);
-    delay(20);
+    if (radio.mode==MODE_iDSB)
+    {
+      si5351.set_freq(radio.frequency * SI5351_FREQ_MULT,SI5351_CLK0);
+      delay(20);
+    }
     digitalWrite(PIN_RXN,LOW);
     digitalWrite(LED_BUILTIN,LOW);
     update_display();
