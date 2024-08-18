@@ -593,7 +593,7 @@ void loop1(void)
     delay(50);
 
     // set TX frequency down by 2700 since
-    // inverted audio is now at frequency + 1700
+    // inverted audio is now at frequency + 2700
     if (radio.mode==MODE_iDSB)
     {
       const uint64_t txf = (radio.frequency-2700) * SI5351_FREQ_MULT;
