@@ -1,4 +1,3 @@
-
 /*
  * Copyright 2024 Ian Mitchell VK7IAN
  * Licenced under the GNU GPL Version 3
@@ -21,7 +20,7 @@
 
 //#define YOUR_CALL "VK7IAN"
 
-#define VERSION_STRING         " V0.9."
+#define VERSION_STRING         " V1.0."
 #define DEFAULT_FREQUENCY      7100000ul
 #define FREQUENCY_MIN          7000000UL
 #define FREQUENCY_MAX          7300000UL
@@ -99,11 +98,18 @@ volatile static uint32_t mic_p_pwm = 0;
 volatile static uint32_t mic_n_pwm = 0;
 volatile static bool setup_complete = false;
 
+enum radio_mode_t
+{
+  MODE_iDSB,
+  MODE_DSB
+};
+
 volatile static struct
 {
   int32_t tune;
   uint32_t step;
   uint32_t frequency;
+  radio_mode_t mode;
   bool tx_enable;
 }
 radio =
@@ -111,6 +117,7 @@ radio =
   0,
   DEFAULT_STEP,
   DEFAULT_FREQUENCY,
+  MODE_iDSB,
   false
 };
 
@@ -334,13 +341,11 @@ void update_display(const uint32_t signal_level = 0u,const bool show_step = fals
       oled.print(sz_frequency);
     }
     oled.setCursor(0,1);
-    if (radio.tx_enable)
+    oled.print("Mode:");
+    switch (radio.mode)
     {
-      oled.print("Mode:*iDSB");
-    }
-    else
-    {
-      oled.print("Mode: iDSB");
+      case MODE_iDSB: oled.print(radio.tx_enable?"*iDSB":" iDSB"); break;
+      case MODE_DSB:  oled.print(radio.tx_enable?" *DSB":"  DSB"); break;
     }
     oled.setCursor(0,2);
     oled.print(radio.tx_enable?"-25-50-75-":"-3-5-7-9-+");
@@ -392,7 +397,7 @@ void loop(void)
       if (adc_value_ready)
       {
         adc_value_ready = false;
-        int16_t mic = process_mic(adc_value);
+        int16_t mic = process_mic(adc_value,radio.mode==MODE_iDSB);
         mic = constrain(mic,-512,+511);
         dac_value_p = +mic;
         dac_value_n = -mic;
@@ -537,7 +542,12 @@ void loop1(void)
       }
       case BUTTON_LONG_PRESS:
       {
-        //// toggle iDSB and DSB
+        // toggle iDSB and DSB
+        switch (radio.mode)
+        {
+          case MODE_iDSB: radio.mode = MODE_DSB;  break;
+          case MODE_DSB:  radio.mode = MODE_iDSB; break;
+        }
         break;
       }
     }

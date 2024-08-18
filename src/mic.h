@@ -929,25 +929,32 @@ static const int16_t __not_in_flash_func(dc)(const int16_t in)
   return (y1 = s >> 16);
 }
 
-const int16_t __not_in_flash_func(process_mic)(const int16_t s)
+const int16_t __not_in_flash_func(process_mic)(const int16_t s,const bool mode_iDSB)
 {
-  static uint32_t lo = 0;
-  const int32_t bfo = sin2700[lo];
-  lo++;
-  if (lo>=sin2700_size)
-  {
-    lo = 0;
-  }
-
-  // LPF, Mix, LPF
+  // remove DC and band limit mic signal
   const int32_t mic = lpf_2400(dc(s));
 
-  // note extra divide by 2 to bring values
-  // into 10 bit range for PWM
-  const int16_t mixer_out = (int16_t)((bfo * mic) >> 16);
+  if (mode_iDSB)
+  {
+    // for iDSB, LPF, Mix, LPF
+    static uint32_t lo = 0;
+    const int32_t bfo = sin2700[lo];
+    lo++;
+    if (lo>=sin2700_size)
+    {
+      lo = 0;
+    }
 
-  // remove the image
-  return lpf_2700(mixer_out);
+    // note extra divide by 2 to bring
+    // value into 10 bit range for PWM
+    const int16_t mixer_out = (int16_t)((bfo * mic) >> 16);
+
+    // remove the image
+    return lpf_2700(mixer_out);
+  }
+
+  // DSB, just reduce to 10 bits for PWM
+  return (mic>>2);
 }
 
 #endif
