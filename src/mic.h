@@ -918,6 +918,220 @@ static const int16_t __not_in_flash_func(lpf_2700)(const int16_t sample)
    return (int16_t)(acc >> 15);
 }
 
+static const int16_t __not_in_flash_func(lpf_2500)(const int16_t sample)
+{
+   // 31250 sample rate
+   // 201 taps
+   // 60dB
+   static int32_t x[FIR_LENGTH] = { 0 };
+   static uint8_t sample_index = 0;
+   uint8_t i = sample_index;
+   x[sample_index--] = sample;
+   int32_t acc = 0;
+  __mac_tap(0);
+  __mac_tap(-2);
+  __mac_tap(-3);
+  __mac_tap(-4);
+  __mac_tap(-4);
+  __mac_tap(-3);
+  __mac_tap(-1);
+  __mac_tap(2);
+  __mac_tap(4);
+  __mac_tap(6);
+  __mac_tap(7);
+  __mac_tap(5);
+  __mac_tap(2);
+  __mac_tap(-3);
+  __mac_tap(-8);
+  __mac_tap(-12);
+  __mac_tap(-13);
+  __mac_tap(-11);
+  __mac_tap(-6);
+  __mac_tap(2);
+  __mac_tap(10);
+  __mac_tap(17);
+  __mac_tap(20);
+  __mac_tap(18);
+  __mac_tap(11);
+  __mac_tap(0);
+  __mac_tap(-14);
+  __mac_tap(-25);
+  __mac_tap(-32);
+  __mac_tap(-31);
+  __mac_tap(-21);
+  __mac_tap(-5);
+  __mac_tap(14);
+  __mac_tap(32);
+  __mac_tap(44);
+  __mac_tap(45);
+  __mac_tap(34);
+  __mac_tap(13);
+  __mac_tap(-15);
+  __mac_tap(-41);
+  __mac_tap(-61);
+  __mac_tap(-66);
+  __mac_tap(-55);
+  __mac_tap(-28);
+  __mac_tap(9);
+  __mac_tap(48);
+  __mac_tap(78);
+  __mac_tap(90);
+  __mac_tap(80);
+  __mac_tap(48);
+  __mac_tap(0);
+  __mac_tap(-54);
+  __mac_tap(-99);
+  __mac_tap(-122);
+  __mac_tap(-116);
+  __mac_tap(-80);
+  __mac_tap(-18);
+  __mac_tap(54);
+  __mac_tap(119);
+  __mac_tap(159);
+  __mac_tap(162);
+  __mac_tap(122);
+  __mac_tap(46);
+  __mac_tap(-49);
+  __mac_tap(-141);
+  __mac_tap(-206);
+  __mac_tap(-223);
+  __mac_tap(-183);
+  __mac_tap(-92);
+  __mac_tap(32);
+  __mac_tap(161);
+  __mac_tap(261);
+  __mac_tap(303);
+  __mac_tap(269);
+  __mac_tap(162);
+  __mac_tap(0);
+  __mac_tap(-181);
+  __mac_tap(-334);
+  __mac_tap(-418);
+  __mac_tap(-401);
+  __mac_tap(-277);
+  __mac_tap(-63);
+  __mac_tap(196);
+  __mac_tap(438);
+  __mac_tap(599);
+  __mac_tap(624);
+  __mac_tap(484);
+  __mac_tap(191);
+  __mac_tap(-209);
+  __mac_tap(-630);
+  __mac_tap(-967);
+  __mac_tap(-1115);
+  __mac_tap(-989);
+  __mac_tap(-542);
+  __mac_tap(215);
+  __mac_tap(1218);
+  __mac_tap(2349);
+  __mac_tap(3461);
+  __mac_tap(4398);
+  __mac_tap(5023);
+  __mac_tap(5242);
+  __mac_tap(5023);
+  __mac_tap(4398);
+  __mac_tap(3461);
+  __mac_tap(2349);
+  __mac_tap(1218);
+  __mac_tap(215);
+  __mac_tap(-542);
+  __mac_tap(-989);
+  __mac_tap(-1115);
+  __mac_tap(-967);
+  __mac_tap(-630);
+  __mac_tap(-209);
+  __mac_tap(191);
+  __mac_tap(484);
+  __mac_tap(624);
+  __mac_tap(599);
+  __mac_tap(438);
+  __mac_tap(196);
+  __mac_tap(-63);
+  __mac_tap(-277);
+  __mac_tap(-401);
+  __mac_tap(-418);
+  __mac_tap(-334);
+  __mac_tap(-181);
+  __mac_tap(0);
+  __mac_tap(162);
+  __mac_tap(269);
+  __mac_tap(303);
+  __mac_tap(261);
+  __mac_tap(161);
+  __mac_tap(32);
+  __mac_tap(-92);
+  __mac_tap(-183);
+  __mac_tap(-223);
+  __mac_tap(-206);
+  __mac_tap(-141);
+  __mac_tap(-49);
+  __mac_tap(46);
+  __mac_tap(122);
+  __mac_tap(162);
+  __mac_tap(159);
+  __mac_tap(119);
+  __mac_tap(54);
+  __mac_tap(-18);
+  __mac_tap(-80);
+  __mac_tap(-116);
+  __mac_tap(-122);
+  __mac_tap(-99);
+  __mac_tap(-54);
+  __mac_tap(0);
+  __mac_tap(48);
+  __mac_tap(80);
+  __mac_tap(90);
+  __mac_tap(78);
+  __mac_tap(48);
+  __mac_tap(9);
+  __mac_tap(-28);
+  __mac_tap(-55);
+  __mac_tap(-66);
+  __mac_tap(-61);
+  __mac_tap(-41);
+  __mac_tap(-15);
+  __mac_tap(13);
+  __mac_tap(34);
+  __mac_tap(45);
+  __mac_tap(44);
+  __mac_tap(32);
+  __mac_tap(14);
+  __mac_tap(-5);
+  __mac_tap(-21);
+  __mac_tap(-31);
+  __mac_tap(-32);
+  __mac_tap(-25);
+  __mac_tap(-14);
+  __mac_tap(0);
+  __mac_tap(11);
+  __mac_tap(18);
+  __mac_tap(20);
+  __mac_tap(17);
+  __mac_tap(10);
+  __mac_tap(2);
+  __mac_tap(-6);
+  __mac_tap(-11);
+  __mac_tap(-13);
+  __mac_tap(-12);
+  __mac_tap(-8);
+  __mac_tap(-3);
+  __mac_tap(2);
+  __mac_tap(5);
+  __mac_tap(7);
+  __mac_tap(6);
+  __mac_tap(4);
+  __mac_tap(2);
+  __mac_tap(-1);
+  __mac_tap(-3);
+  __mac_tap(-4);
+  __mac_tap(-4);
+  __mac_tap(-3);
+  __mac_tap(-2);
+  __mac_tap(0);
+   return (int16_t)(acc >> 15);
+}
+
 static const int16_t __not_in_flash_func(dc)(const int16_t in)
 {
   static int32_t s = 0;
@@ -931,12 +1145,16 @@ static const int16_t __not_in_flash_func(dc)(const int16_t in)
 
 const int16_t __not_in_flash_func(process_mic)(const int16_t s,const bool mode_iDSB)
 {
+  // used to keep maximum level to 10 bits
+  // so that PWM does not overflow
+  volatile static int32_t alc = 256l;
+
   // remove DC and band limit mic signal
   const int32_t mic = lpf_2400(dc(s));
 
   if (mode_iDSB)
   {
-    // for iDSB, LPF, Mix, LPF
+    // for iDSB, LPF, Mix, LPF, ALC
     static uint32_t lo = 0;
     const int32_t bfo = sin2700[lo];
     lo++;
@@ -946,11 +1164,15 @@ const int16_t __not_in_flash_func(process_mic)(const int16_t s,const bool mode_i
     }
 
     // note extra divide by 2 to bring
-    // value into 10 bit range for PWM
+    // value close to 10 bit range for PWM
     const int16_t mixer_out = (int16_t)((bfo * mic) >> 16);
 
     // remove the image
-    return lpf_2700(mixer_out);
+    const int32_t mic_out = ((int32_t)lpf_2500(mixer_out) * alc) >> 8;
+
+    // AVC
+    if (abs(mic_out)>511l) alc--;
+    return mic_out;
   }
 
   // DSB, just reduce to 10 bits for PWM
