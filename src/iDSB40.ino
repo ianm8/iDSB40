@@ -13,14 +13,14 @@
 #include <Tiny4kOLED.h>
 #include "Rotary.h"
 #include "agc.h"
-#include "mic.h"
+#include "dsp.h"
 #include "hardware/pwm.h"
 #include "hardware/adc.h"
 #include "hardware/vreg.h"
 
 //#define YOUR_CALL "VK7IAN"
 
-#define VERSION_STRING         " V1.4." // CW proof of concept only
+#define VERSION_STRING         " V1.5."
 #define DEFAULT_FREQUENCY      7100000ul
 #define FREQUENCY_MIN          7000000UL
 #define FREQUENCY_MAX          7300000UL
@@ -31,9 +31,7 @@
 #define LM4875_MUTE            56u
 #define LM4875_SHUTDOWN        0u
 #define CW_SIDETONE            700ul
-//#define CW_LEVEL               (int16_t)15 // (100mv / 3.3) * 1024 / 2 (200mW)
-//#define CW_LEVEL               (int16_t)60 // (400mv / 3.3) * 1024 / 2 (2.4W)
-#define CW_LEVEL               (int16_t)120 // (400mv / 3.3) * 1024 / 2 (8.0W)
+#define CW_TIMEOUT             800ul
 
 #define PIN_UNUSED_0   0
 #define PIN_TXN        1 // Enable TX mixer (active low)
@@ -106,6 +104,7 @@ enum radio_mode_t
 {
   MODE_iDSB,
   MODE_DSB,
+  MODE_AM,
   MODE_CW
 };
 
@@ -115,6 +114,7 @@ volatile static struct
   uint32_t step;
   uint32_t frequency;
   radio_mode_t mode;
+  bool keydown;
   bool tx_enable;
 }
 radio =
@@ -123,6 +123,7 @@ radio =
   DEFAULT_STEP,
   DEFAULT_FREQUENCY,
   MODE_iDSB,
+  false,
   false
 };
 
@@ -351,6 +352,7 @@ void update_display(const uint32_t signal_level = 0u,const bool show_step = fals
     {
       case MODE_iDSB: oled.print(radio.tx_enable?"*iDSB":" iDSB"); break;
       case MODE_DSB:  oled.print(radio.tx_enable?" *DSB":"  DSB"); break;
+      case MODE_AM:   oled.print(radio.tx_enable?"  *AM":"   AM"); break;
       case MODE_CW:   oled.print(radio.tx_enable?"  *CW":"   CW"); break;
     }
     oled.setCursor(0,2);
@@ -404,15 +406,14 @@ void loop(void)
       {
         adc_value_ready = false;
         int16_t tx_value = 0;
-        if (radio.mode==MODE_CW)
+        switch (radio.mode)
         {
-          tx_value = CW_LEVEL;
+          case MODE_iDSB: tx_value = process_iDSB(adc_value);   break;
+          case MODE_DSB:  tx_value = process_DSB(adc_value);    break;
+          case MODE_AM:   tx_value = process_AM(adc_value);     break;
+          case MODE_CW:   tx_value = process_CW(radio.keydown); break;
         }
-        else
-        {
-          const int16_t mic_value = process_mic(adc_value,radio.mode==MODE_iDSB);
-          tx_value = constrain(mic_value,-512,+511);
-        }
+        tx_value = constrain(tx_value,-512,+511);
         dac_value_p = +tx_value;
         dac_value_n = -tx_value;
         agc_adc_value = 0;
@@ -465,6 +466,140 @@ void loop(void)
           mutex_exit(&rotary_mutex);
           break;
         }
+      }
+    }
+  }
+}
+
+static void process_mic(void)
+{
+  digitalWrite(LED_BUILTIN,HIGH);
+
+  // mute the receiver
+  analogWrite(PIN_AGCOUT,LM4875_MUTE);
+  delay(10);
+
+  // set TX frequency down by 2700 since
+  // inverted audio is now at frequency + 2700
+  if (radio.mode==MODE_iDSB)
+  {
+    const uint64_t txf = (radio.frequency-2700) * SI5351_FREQ_MULT;
+    si5351.set_freq(txf,SI5351_CLK0);
+  }
+  else
+  {
+    const uint64_t txf = radio.frequency * SI5351_FREQ_MULT;
+    si5351.set_freq(txf,SI5351_CLK0);
+  }
+
+  // prevent TX/RX feedback
+  // *Note, there is an issue with the RP2040 ADC switching circuitry
+  pinMode(PIN_AGCIN,OUTPUT);
+  digitalWrite(PIN_AGCIN,LOW);
+
+  // disable detector
+  digitalWrite(PIN_RXN,HIGH);
+
+  // enable TX processing
+  radio.tx_enable = true;
+  update_display();
+
+  // enable tx mixer and TX bias
+  digitalWrite(PIN_TXN,LOW);
+  digitalWrite(PIN_TXBIAS,HIGH);
+  delay(10);
+
+  // wait for PTT release
+  uint32_t mic_peak_level = 0;
+  uint32_t mic_level_update = 0;
+  uint32_t tx_display_update = 0;
+  uint32_t mic_hangtime_update = 0;
+  uint32_t tx_debounce = 0;
+  while (digitalRead(PIN_PTT)==LOW)
+  {
+    static const uint32_t MIC_LEVEL_DECAY_RATE = 50ul;
+    static const uint32_t MIC_LEVEL_HANG_TIME = 1000ul;
+    const uint32_t now = millis();
+    const uint32_t mic_level = abs(adc_value)>>5;
+    if (mic_level>mic_peak_level)
+    {
+      mic_peak_level = mic_level;
+      mic_level_update = now + MIC_LEVEL_DECAY_RATE;
+      mic_hangtime_update = now + MIC_LEVEL_HANG_TIME;
+    }
+    else
+    {
+      if (now>mic_hangtime_update)
+      {
+        if (now>mic_level_update)
+        {
+          if (mic_peak_level) mic_peak_level--;
+          mic_level_update = now + MIC_LEVEL_DECAY_RATE;
+        }
+      }
+    }
+    if (now>tx_display_update)
+    {
+      update_display(mic_peak_level);
+      tx_display_update = now + 50ul;
+    }
+    else
+    {
+      delayMicroseconds(32);
+    }
+  }
+}
+
+static void process_key(void)
+{
+  // mute the receiver
+  analogWrite(PIN_AGCOUT,LM4875_MUTE);
+  delay(10);
+
+  // for CW set TX to the displayed frequency
+  const uint64_t txf = radio.frequency * SI5351_FREQ_MULT;
+  si5351.set_freq(txf,SI5351_CLK0);
+
+  // prevent TX/RX feedback
+  // *Note, there is an issue with the RP2040 ADC switching circuitry
+  pinMode(PIN_AGCIN,OUTPUT);
+  digitalWrite(PIN_AGCIN,LOW);
+
+  // disable detector
+  digitalWrite(PIN_RXN,HIGH);
+
+  // enable TX processing
+  radio.tx_enable = true;
+  update_display();
+
+  // enable tx mixer and TX bias
+  digitalWrite(PIN_TXN,LOW);
+  digitalWrite(PIN_TXBIAS,HIGH);
+  delay(10);
+
+  // stay here until timeout after key up (PTT released)
+  uint32_t cw_timeout = millis() + CW_TIMEOUT;
+  for (;;)
+  {
+    if (digitalRead(PIN_PTT)==LOW)
+    {
+      // indicate PTT pressed
+      digitalWrite(LED_BUILTIN,HIGH);
+      radio.keydown = true;
+      cw_timeout = millis() + CW_TIMEOUT;
+      update_display(63u);
+      delay(10);
+    }
+    else
+    {
+      // indicate PTT released
+      digitalWrite(LED_BUILTIN,LOW);
+      radio.keydown = false;
+      update_display(0u);
+      delay(10);
+      if (millis()>cw_timeout)
+      {
+        break;
       }
     }
   }
@@ -540,7 +675,7 @@ void loop1(void)
       }
     }
 
-    // process botton action
+    // process button action
     switch (button_action)
     {
       case BUTTON_SHORT_PRESS:
@@ -559,9 +694,10 @@ void loop1(void)
         // toggle iDSB and DSB
         switch (radio.mode)
         {
-          case MODE_iDSB: radio.mode = MODE_DSB;  break;
-          case MODE_DSB:  radio.mode = MODE_CW;   break;
-          case MODE_CW:   radio.mode = MODE_iDSB; break;
+          case MODE_iDSB: radio.mode = MODE_CW;   break;
+          case MODE_CW:   radio.mode = MODE_DSB;  break;
+          case MODE_DSB:  radio.mode = MODE_AM;   break;
+          case MODE_AM:   radio.mode = MODE_iDSB; break;
         }
         break;
       }
@@ -597,88 +733,13 @@ void loop1(void)
   // check for PTT
   if (digitalRead(PIN_PTT)==LOW)
   {
-    // 1. mute the receiver
-    // 2. disable detector
-    // 3. enable MIC (DSP)
-    // 4. enable TX bias
-
-    digitalWrite(LED_BUILTIN,HIGH);
-
-    // mute the receiver
-    analogWrite(PIN_AGCOUT,LM4875_SHUTDOWN);
-    delay(50);
-
-    if (radio.mode==MODE_iDSB)
+    if (radio.mode==MODE_CW)
     {
-      // set TX frequency down by 2700 since
-      // inverted audio is now at frequency + 2700
-      const uint64_t txf = (radio.frequency-2700) * SI5351_FREQ_MULT;
-      si5351.set_freq(txf,SI5351_CLK0);
+      process_key();
     }
-    else if (radio.mode==MODE_CW)
+    else
     {
-      // for CW set TX to the displayed frequency
-      const uint64_t txf = radio.frequency * SI5351_FREQ_MULT;
-      si5351.set_freq(txf,SI5351_CLK0);
-    }
-
-
-    // prevent TX/RX feedback
-    // *Note, there is an issue with the RP2040 ADC switching circuitry
-    pinMode(PIN_AGCIN,OUTPUT);
-    digitalWrite(PIN_AGCIN,LOW);
-
-    // disable detector
-    digitalWrite(PIN_RXN,HIGH);
-
-    // enable MIC processing
-    radio.tx_enable = true;
-    update_display();
-    delay(10);
-
-    // enable tx mixer and TX bias
-    digitalWrite(PIN_TXN,LOW);
-    digitalWrite(PIN_TXBIAS,HIGH);
-    delay(50);
-
-    // wait for PTT release
-    uint32_t mic_peak_level = 0;
-    uint32_t mic_level_update = 0;
-    uint32_t tx_display_update = 0;
-    uint32_t mic_hangtime_update = 0;
-    uint32_t tx_debounce = 0;
-    while (digitalRead(PIN_PTT)==LOW)
-    {
-      static const uint32_t MIC_LEVEL_DECAY_RATE = 50ul;
-      static const uint32_t MIC_LEVEL_HANG_TIME = 1000ul;
-      const uint32_t now = millis();
-      const uint32_t mic_level = abs(adc_value)>>5;
-      if (mic_level>mic_peak_level)
-      {
-        mic_peak_level = mic_level;
-        mic_level_update = now + MIC_LEVEL_DECAY_RATE;
-        mic_hangtime_update = now + MIC_LEVEL_HANG_TIME;
-      }
-      else
-      {
-        if (now>mic_hangtime_update)
-        {
-          if (now>mic_level_update)
-          {
-            if (mic_peak_level) mic_peak_level--;
-            mic_level_update = now + MIC_LEVEL_DECAY_RATE;
-          }
-        }
-      }
-      if (now>tx_display_update)
-      {
-        update_display(mic_peak_level);
-        tx_display_update = now + 50ul;
-      }
-      else
-      {
-        delayMicroseconds(32);
-      }
+      process_mic();
     }
 
     // back to receive
@@ -686,17 +747,17 @@ void loop1(void)
     digitalWrite(PIN_TXN,HIGH);
     adc_gpio_init(PIN_AGCIN);
     radio.tx_enable = false;
-    delay(20);
+    delay(10);
 
-    if (radio.mode==MODE_iDSB)
-    {
-      si5351.set_freq(radio.frequency * SI5351_FREQ_MULT,SI5351_CLK0);
-      delay(20);
-    }
-    else if (radio.mode==MODE_CW)
+    if (radio.mode==MODE_CW)
     {
       si5351.set_freq((radio.frequency + CW_SIDETONE) * SI5351_FREQ_MULT,SI5351_CLK0);
-      delay(20);
+      delay(10);
+    }
+    else
+    {
+      si5351.set_freq(radio.frequency * SI5351_FREQ_MULT,SI5351_CLK0);
+      delay(10);
     }
 
     digitalWrite(PIN_RXN,LOW);
