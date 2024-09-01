@@ -20,7 +20,7 @@
 
 //#define YOUR_CALL "VK7IAN"
 
-#define VERSION_STRING         " V1.5."
+#define VERSION_STRING         " V1.6."
 #define DEFAULT_FREQUENCY      7100000ul
 #define FREQUENCY_MIN          7000000UL
 #define FREQUENCY_MAX          7300000UL
@@ -691,7 +691,7 @@ void loop1(void)
       }
       case BUTTON_LONG_PRESS:
       {
-        // toggle iDSB and DSB
+        // switch modes
         switch (radio.mode)
         {
           case MODE_iDSB: radio.mode = MODE_CW;   break;
