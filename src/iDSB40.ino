@@ -20,7 +20,7 @@
 
 //#define YOUR_CALL "VK7IAN"
 
-#define VERSION_STRING         " V1.6."
+#define VERSION_STRING         " V1.7."
 #define DEFAULT_FREQUENCY      7100000ul
 #define FREQUENCY_MIN          7000000UL
 #define FREQUENCY_MAX          7300000UL
@@ -139,6 +139,7 @@ void init_adc(void)
   adc_fifo_setup(true, false, 4, false, false);
   adc_irq_set_enabled(true);
   irq_set_exclusive_handler(ADC_IRQ_FIFO, adc_interrupt_handler);
+  irq_set_priority(ADC_IRQ_FIFO, PICO_HIGHEST_IRQ_PRIORITY);
   irq_set_enabled(ADC_IRQ_FIFO, true);
   adc_run(true);
 }
@@ -476,7 +477,7 @@ static void process_mic(void)
   digitalWrite(LED_BUILTIN,HIGH);
 
   // mute the receiver
-  analogWrite(PIN_AGCOUT,LM4875_MUTE);
+  analogWrite(PIN_AGCOUT,LM4875_SHUTDOWN);
   delay(10);
 
   // set TX frequency down by 2700 since
@@ -609,6 +610,7 @@ void loop1(void)
 {
   // run UI on core 1
   static uint32_t old_frequency = radio.frequency;
+  static radio_mode_t old_mode = radio.mode;
   static uint32_t agc_continue = 0;
   static uint8_t saved_agc_level = 0;
   static uint32_t show_step = 0;
@@ -703,7 +705,8 @@ void loop1(void)
       }
     }
 
-    // process main tuning
+    // process main tuning, also if the mode
+    // changes then reset the frequency
     mutex_enter_blocking(&rotary_mutex);
     const int32_t tuning_delta = radio.tune;
     radio.tune = 0;
@@ -712,9 +715,10 @@ void loop1(void)
     radio.frequency = radio.frequency/radio.step;
     radio.frequency = radio.frequency*radio.step;
     radio.frequency = constrain(radio.frequency,FREQUENCY_MIN,FREQUENCY_MAX);
-    if (radio.frequency!=old_frequency)
+    if (radio.frequency!=old_frequency || radio.mode!=old_mode)
     {
       old_frequency = radio.frequency;
+      old_mode = radio.mode;
       const uint32_t mode_delta = radio.mode==MODE_CW?CW_SIDETONE:0;
       const uint64_t f = (radio.frequency + mode_delta) * SI5351_FREQ_MULT;
       si5351.set_freq(f,SI5351_CLK0);
