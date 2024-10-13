@@ -1,4 +1,4 @@
-This version supports double sideband (DSB), invervse DSB, AM, CW and LSB. Pleae note, the SSB mode is experimental and uses the so called Envelope Elimination and Restoration method. This is not however class E and the quality of audio is not perfect. Also, LSB applies to the transmitted signal only and the receiver remains direct conversion.
+This version supports double sideband (DSB), inverse DSB, AM, CW and LSB. Pleae note, the SSB mode is experimental and uses the so called Envelope Elimination and Restoration method. This is not however class E and the quality of audio is not perfect. Also, LSB applies to the transmitted signal only and the receiver remains direct conversion.
 
 ## To build in Arduino IDE
 
