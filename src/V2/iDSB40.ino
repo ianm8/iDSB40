@@ -7,6 +7,12 @@
  * https://github.com/brianlow/Rotary (local copy)
  * https://github.com/datacute/Tiny4kOLED
  *
+ * Build
+ *  Board: Pico (RP2040)
+ *  CPU: 240 Mhz
+ *  Optimize: -O2
+ *  USB Stack: No USB
+ *
  */
 #include "si5351mcu.h"
 #include <Tiny4kOLED.h>
@@ -19,7 +25,7 @@
 
 //#define YOUR_CALL "VK7IAN"
 
-#define VERSION_STRING         " V2.0."
+#define VERSION_STRING         " V2.2."
 #define DEFAULT_FREQUENCY      7100000ul
 #define FREQUENCY_MIN          7000000UL
 #define FREQUENCY_MAX          7300000UL
@@ -122,7 +128,7 @@ radio =
   0,
   DEFAULT_STEP,
   DEFAULT_FREQUENCY,
-  MODE_SSB,
+  MODE_iDSB,
   false,
   false
 };
@@ -132,19 +138,6 @@ volatile uint32_t debug_counter = 0;
 
 Si5351mcu SI5351;
 Rotary r = Rotary(PIN_ENCB,PIN_ENCA);
-
-void init_adc(void)
-{
-  adc_init();
-  adc_gpio_init(PIN_MIC);
-  adc_gpio_init(PIN_AGCIN);
-  adc_select_input(AGC_MUX);
-  adc_fifo_setup(true, false, 4, false, false);
-  adc_irq_set_enabled(true);
-  irq_set_exclusive_handler(ADC_IRQ_FIFO, adc_interrupt_handler);
-  irq_set_enabled(ADC_IRQ_FIFO, true);
-  adc_run(true);
-}
 
 void setup(void)
 {
@@ -228,8 +221,6 @@ void setup(void)
 
   Wire.setSDA(PIN_SDA);
   Wire.setSCL(PIN_SCL);
-////
-  //Wire.setClock(400000ul);
   Wire.setClock(800000ul);
   const bool SI5351_found = SI5351.init(TCXO_FREQ);
   if (!SI5351_found)
@@ -403,7 +394,7 @@ volatile static bool agc_value_ready = false;
 volatile static uint16_t frequency_delta = 0;
 volatile static bool frequency_ready = false;
 
-void adc_interrupt_handler(void)
+void __not_in_flash_func(adc_interrupt_handler)(void)
 {
   volatile static uint32_t counter = 0;
   volatile static uint32_t adc_raw = 0;
@@ -417,8 +408,16 @@ void adc_interrupt_handler(void)
   adc_raw += adc_fifo_get();
   if (counter==4)
   {
-    DAC(mic_p_pwm,dac_value_p);
-    DAC(mic_n_pwm,dac_value_n);
+    if (radio.mode==MODE_SSB)
+    {
+      pwm_set_both_levels(mic_p_pwm, (dac_value_p>>5)&0x1f, dac_value_p&0x1f);
+      pwm_set_both_levels(mic_n_pwm, 0, 0);
+    }
+    else
+    {
+      DAC(mic_p_pwm,dac_value_p);
+      DAC(mic_n_pwm,dac_value_n);
+    }
     adc_value = (int16_t)(adc_raw>>4)-2048;
     adc_value_ready = true;
     adc_raw = 0;
@@ -427,7 +426,21 @@ void adc_interrupt_handler(void)
   counter++;
 }
 
-void loop(void)
+void init_adc(void)
+{
+  adc_init();
+  adc_gpio_init(PIN_MIC);
+  adc_gpio_init(PIN_AGCIN);
+  adc_select_input(AGC_MUX);
+  adc_fifo_setup(true, false, 4, false, false);
+  adc_irq_set_enabled(true);
+  irq_set_exclusive_handler(ADC_IRQ_FIFO, adc_interrupt_handler);
+  irq_set_priority(ADC_IRQ_FIFO, PICO_HIGHEST_IRQ_PRIORITY);
+  irq_set_enabled(ADC_IRQ_FIFO, true);
+  adc_run(true);
+}
+
+void __not_in_flash_func(loop)(void)
 {
   // run DSP on core 0
   static bool tx = false;
@@ -448,10 +461,12 @@ void loop(void)
           case MODE_CW:   tx_value = process_CW(radio.keydown); break;
           case MODE_SSB:
           {
-            static uint16_t ssb_counter = 0;
-            static uint16_t tx_old = 0;
-            static uint16_t tx_raw = 0;
-            static uint16_t df_raw = 0;
+            // SSB @ 7812Hz sample rate
+            volatile static uint16_t ssb_counter = 0;
+            volatile static uint16_t tx_old = 0;
+            volatile static uint16_t tx_raw = 0;
+            volatile static uint16_t df_raw = 0;
+            //volatile static uint16_t delay_value = 0;
             uint16_t df = 0;
             tx_value = tx_old;
             tx_raw += process_SSB(adc_value,df);
@@ -459,19 +474,9 @@ void loop(void)
             if (ssb_counter==4)
             {
               tx_value = tx_raw>>2;
-              tx_old = tx_value;
               frequency_delta = df_raw>>2;
               frequency_ready = true;
-////
-/*
-              debug_counter++;
-              //digitalWrite(LED_BUILTIN,debug_counter&1);
-              if (debug_counter==15625UL)
-              {
-                //debug_value = frequency_delta;
-                debug_value = tx_value;
-              }
-*/
+              tx_old = tx_value;
               tx_raw = 0;
               df_raw = 0;
               ssb_counter = 0;
@@ -480,9 +485,16 @@ void loop(void)
             break;
           }
         }
-        tx_value = constrain(tx_value,-512,+511);
-        dac_value_p = +tx_value;
-        dac_value_n = -tx_value;
+        if (radio.mode==MODE_SSB)
+        {
+          dac_value_p = constrain(tx_value,0,1023);
+        }
+        else
+        {
+          tx_value = constrain(tx_value,-512,+511);
+          dac_value_p = +tx_value;
+          dac_value_n = -tx_value;
+        }
         agc_adc_value = 0;
       }
     }
@@ -593,10 +605,7 @@ static void process_mic(void)
       if (frequency_ready)
       {
         frequency_ready = false;
-        //digitalWrite(LED_BUILTIN,HIGH);
         SI5351.setFreq(0,radio.frequency-frequency_delta,true);
-        //digitalWrite(LED_BUILTIN,LOW);
-        ////
         digitalWrite(LED_BUILTIN,(tx_test++)&1);
       }
       continue;

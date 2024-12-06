@@ -12,7 +12,7 @@
 #define FIR_LENGTH 256
 #define __mac_tap(_h) acc += (_h)*x[i++]
 
-static const int16_t sin2700[] =
+static const int16_t __not_in_flash("fast_access_sram") sin2700[] =
 {
   32767,
   28056,
@@ -1686,8 +1686,7 @@ static const uint16_t __not_in_flash_func(atanj_fixed_31250)(uint16_t y, uint16_
 {
 
    // for sample rate of 31250
-
-   static const uint16_t A_fixed[65] = {
+   static const uint16_t __not_in_flash("fast_access_sram") A_fixed[65] = {
       0,
       0,
       0,
@@ -1755,7 +1754,7 @@ static const uint16_t __not_in_flash_func(atanj_fixed_31250)(uint16_t y, uint16_
       1439
    };
 
-   static const uint16_t B_fixed[65] = {
+   static const uint16_t __not_in_flash("fast_access_sram") B_fixed[65] = {
       4973,
       4971,
       4966,
@@ -1850,7 +1849,9 @@ const int16_t __not_in_flash_func(atan2j)(int16_t y, int16_t x)
    }
 
    if (y < x)
+   {
       z = atanj_fixed_31250(y, x);
+   }
    else
    {
       z = atanj_fixed_31250(x, y);
@@ -1871,34 +1872,34 @@ const int16_t __not_in_flash_func(atan2j)(int16_t y, int16_t x)
 }
 
 #define iter1(N) \
-   partial = root + (1 << (N)); \
-   if (n >= partial << (N)) \
-   { \
-      n -= partial << (N); \
-      root |= 2 << (N); \
-   }
+  partial = root + (1 << (N)); \
+  if (n >= partial << (N)) \
+  { \
+    n -= partial << (N); \
+    root |= 2 << (N); \
+  }
 
 static const uint32_t __not_in_flash_func(isqrt)(uint32_t n)
 {
-   uint32_t root = 0;
-   uint32_t partial = 0;
-   iter1(15);
-   iter1(14);
-   iter1(13);
-   iter1(12);
-   iter1(11);
-   iter1(10);
-   iter1(9);
-   iter1(8);
-   iter1(7);
-   iter1(6);
-   iter1(5);
-   iter1(4);
-   iter1(3);
-   iter1(2);
-   iter1(1);
-   iter1(0);
-   return root >> 1;
+  uint32_t root = 0;
+  uint32_t partial = 0;
+  iter1(15);
+  iter1(14);
+  iter1(13);
+  iter1(12);
+  iter1(11);
+  iter1(10);
+  iter1(9);
+  iter1(8);
+  iter1(7);
+  iter1(6);
+  iter1(5);
+  iter1(4);
+  iter1(3);
+  iter1(2);
+  iter1(1);
+  iter1(0);
+  return root >> 1;
 }
 
 static const int16_t __not_in_flash_func(dc)(const int16_t in)
@@ -1908,11 +1909,11 @@ static const int16_t __not_in_flash_func(dc)(const int16_t in)
   static int16_t y1 = 0;
   s -= x1;
   x1 = (int32_t)in << 16;
-  s += x1 - ((int32_t)y1 << 8);
+  s += x1 - ((int32_t)y1 << 10);
   return (y1 = s >> 16);
 }
 
-const int16_t __not_in_flash_func(process_iDSB)(const int16_t s)
+static const int16_t __not_in_flash_func(process_iDSB)(const int16_t s)
 {
   // for iDSB, LPF, Mix, LPF, ALC
   // used to keep maximum level to 10 bits
@@ -1942,22 +1943,23 @@ const int16_t __not_in_flash_func(process_iDSB)(const int16_t s)
   return mic_out;
 }
 
-const int16_t __not_in_flash_func(process_DSB)(const int16_t s)
+static const int16_t __not_in_flash_func(process_DSB)(const int16_t s)
 {
   // used to keep maximum level to 10 bits
   // so that PWM does not overflow
   volatile static int32_t alc = 256L;
 
   // remove DC and band limit mic signal
-  const int32_t mic_in = lpf_2400(hpf_300(dc(s)));
-  const int32_t mic_out = ((mic_in >> 2)  * alc) >> 8;;
+  const int32_t mic_in = lpf_2400(hpf_300(s));
+  //const int32_t mic_in = lpf_2400(dc(s));
+  const int32_t mic_out = (mic_in * alc) >> (8 + 2);
 
   // ALC
   if (abs(mic_out)>511L) alc--;
   return mic_out;
 }
 
-const int16_t __not_in_flash_func(process_AM)(const int16_t s)
+static const int16_t __not_in_flash_func(process_AM)(const int16_t s)
 {
   // remove DC and band limit mic signal
   const int32_t mic_in = lpf_2400(dc(s));
@@ -1968,23 +1970,101 @@ const int16_t __not_in_flash_func(process_AM)(const int16_t s)
   return mic_out;
 }
 
-const int16_t __not_in_flash_func(process_CW)(const bool keydown)
+static const int16_t __not_in_flash_func(process_CW)(const bool keydown)
 {
   // DC value generates CW
   return keydown?CW_LEVEL:0;
 }
 
-const int16_t __not_in_flash_func(process_SSB)(const int16_t s,uint16_t &frequency)
+static const int16_t __not_in_flash_func(maf1a)(const int16_t v)
 {
+  static int16_t element[4] = {0};
+  static uint8_t p = 0;
+  static int32_t sum = 0;
+  sum = sum - element[p] + v;
+  element[p++] = v;
+  p &= 0x03;
+  return sum>>2;
+}
+
+static const int16_t __not_in_flash_func(maf1b)(const int16_t v)
+{
+  static int16_t element[4] = {0};
+  static uint8_t p = 0;
+  static int32_t sum = 0;
+  sum = sum - element[p] + v;
+  element[p++] = v;
+  p &= 0x03;
+  return sum>>2;
+}
+
+static const int16_t __not_in_flash_func(maf1c)(const int16_t v)
+{
+  static int16_t element[4] = {0};
+  static uint8_t p = 0;
+  static int32_t sum = 0;
+  sum = sum - element[p] + v;
+  element[p++] = v;
+  p &= 0x03;
+  return sum>>2;
+}
+
+static const int16_t __not_in_flash_func(maf1d)(const int16_t v)
+{
+  static int16_t element[4] = {0};
+  static uint8_t p = 0;
+  static int32_t sum = 0;
+  sum = sum - element[p] + v;
+  element[p++] = v;
+  p &= 0x03;
+  return sum>>2;
+}
+
+static const int16_t __not_in_flash_func(maf2a)(const int16_t v)
+{
+  static int16_t element[4] = {0};
+  static uint8_t p = 0;
+  static int32_t sum = 0;
+  sum = sum - element[p] + v;
+  element[p++] = v;
+  p &= 0x03;
+  return sum>>2;
+}
+
+static const int16_t __not_in_flash_func(maf2b)(const int16_t v)
+{
+  static int16_t element[4] = {0};
+  static uint8_t p = 0;
+  static int32_t sum = 0;
+  sum = sum - element[p] + v;
+  element[p++] = v;
+  p &= 0x03;
+  return sum>>2;
+}
+
+static const int16_t __not_in_flash_func(maf2c)(const int16_t v)
+{
+  static int16_t element[4] = {0};
+  static uint8_t p = 0;
+  static int32_t sum = 0;
+  sum = sum - element[p] + v;
+  element[p++] = v;
+  p &= 0x03;
+  return sum>>2;
+}
+
+static const int16_t __not_in_flash_func(process_SSB)(const int16_t s,uint16_t &frequency)
+{
+  volatile static int32_t alc = 256L;
   volatile static int16_t prev_phase = 0;
   volatile static uint8_t lo = 0;
   const uint8_t bfo = lo & 0x03;
 
-  // bfo oscillators
+  // bfo oscillates
   lo++;
 
   // remove DC and band limit mic signal
-  const int16_t mic_in = lpf_SSB_2400(dc(s));
+  const int16_t mic_in = lpf_SSB_2400(dc(s>>2));
 
   // up convert to FS/4
   int16_t v = 0;
@@ -2019,26 +2099,23 @@ const int16_t __not_in_flash_func(process_SSB)(const int16_t s,uint16_t &frequen
   int16_t freq = phase - prev_phase;
   prev_phase = phase;
   if (freq < 0) freq += SAMPLERATE;
-  frequency = freq;
-/*
-  if (freq<300)
+  frequency = maf1c(maf1b(maf1a(freq)));
+  int16_t magnitude = maf2c(maf2b(maf2a(isqrt(sig_i*sig_i + sig_q*sig_q))));
+
+  // ALC
+  magnitude = ((int32_t)magnitude * alc) >> 8;
+  if (magnitude>1023) alc--;
+
+  if (frequency>2400)
   {
-    frequency = 300;
     return 0;
   }
-  if (freq>2500)
-  {
-    frequency = 2500;
-    return 0;
-  }
-*/
-  if (freq<300 || freq>2500)
+  if (frequency<300)
   {
     return 0;
   }
 
-  // magnitude
-  return isqrt(sig_i*sig_i + sig_q*sig_q);
+  return magnitude;
 }
 
 #endif

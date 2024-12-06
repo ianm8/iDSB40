@@ -22,7 +22,7 @@ class Rotary
 {
   public:
     Rotary(char, char);
-    unsigned char process();
+    unsigned char process(void);
     void begin(bool internalPullup=true, bool flipLogicForPulldown=false);
   private:
     unsigned char state;
